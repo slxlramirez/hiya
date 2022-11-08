@@ -1,0 +1,17 @@
+import requests, base64
+
+url = 'enter url'
+app_id = 'enter key'
+app_secret = 'enter pass'
+
+print ("Currently you have:\n url: " + url + "\n app_id: " + app_id + "\n app_secret: " + app_secret)
+
+encoded_appsecret = base64.b64encode((app_id + ':' + app_secret).encode()).decode()
+print ("After base64 encoding that, you have: \n encoded_appsecret: " + encoded_appsecret)
+
+headers = {"Authorization" : "Basic %s" % encoded_appsecret}
+
+print ("And you can build your headers now, which looks like this:\n headers:" + str(headers))
+
+response = requests.get(url, headers=headers).json()
+response
