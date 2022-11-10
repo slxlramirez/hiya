@@ -1,0 +1,126 @@
+import requests
+import base64
+import csv
+import os
+
+base_url = 'url'
+# CONSIDER PULLING THESE VALUES FROM A FILE 
+app_id = ''
+app_secret = ''
+encoded_appsecret = base64.b64encode((app_id + ':' + app_secret).encode()).decode()
+headers = {"Authorization": "Basic %s" % encoded_appsecret}
+
+def build_url(cc,number):
+    return base_url + cc + '/' + number
+
+def create_csv():
+    # CREATE THE OUTPUT CSV FILES FOR UPDATES AS WE GO AND SET THE HEADER
+    # THIS BLANKS OUT ANY EXISTING FILE AND WRITES ONE WITH A SINGLE HEADER LINE
+    with open('csv_files/current_status.csv', 'w') as f:
+        header = ['number', 'json_response', 'callSecureState', 'callSecureRouting']
+        writer = csv.writer(f)
+        writer.writerow(header)
+    with open('csv_files/updated_status.csv', 'w') as f:
+        header = ['number', 'json_response', 'callSecureState', 'callSecureRouting']
+        writer = csv.writer(f)
+        writer.writerow(header)
+    with open('csv_files/errors.csv', 'w') as f:
+        header = ['number', 'status_code']
+        writer = csv.writer(f)
+        writer.writerow(header)
+
+def update_csv(row, file):
+    with open(file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(row)
+        
+def create_row(response, file):
+    res = response.json()
+    values = []
+    values.extend([res["phoneNumber"],response.status_code,res["secureCall"]["active"],res["secureCall"]["failureRouting"]])
+    update_csv(values,file)
+    
+def query_hiya(url):
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        create_row(response,'csv_files/current_status.csv')
+    else:
+        values = [url,response.status_code]
+        update_csv(values, 'csv_files/errors.csv')
+    return response.status_code
+    
+    ##res = response.json()
+    
+    
+    #print("Your response CODE is: " + str(get_response.status_code))
+    #print("Print each key-value pair from JSON response:")
+    #for key, value in get_response_json.items():
+    #    print(key, ":", value)
+    #print("For Phonenumber: " + get_response_json["phoneNumber"])
+    #print("Call Secure enabled: " + str(get_response_json["secureCall"]["active"]))
+    #print("Call Secure Failure Routing Method: " + str(get_response_json["secureCall"]["failureRouting"]))
+    
+    
+    ##values = []
+    
+    #values.append(get_response_json["phoneNumber"])
+    #values.append(get_response.status_code)
+    #values.append(get_response_json["secureCall"]["active"])
+    #values.append(get_response_json["secureCall"]["failureRouting"])
+    
+    
+    ##values.extend([res["phoneNumber"],response.status_code,res["secureCall"]["active"],res["secureCall"]["failureRouting"]])
+    
+    
+    #print ("Values is: " + str(values))
+    
+    
+    ##update_csv(values,'csv_files/current_status.csv')
+    
+def update_hiya(url, secureCallState, secureCallRouting):  
+    data = {"doNotOriginate": False, "display": {"displayName": "SLX Corporation", "country": "US", "state": "TX", "city": "San Antonio", "managedBrand": "SecureLogix"}, "secureCall": {"activate": False, "failureRouting": "WARN"}} 
+    data["secureCall"]["activate"] = secureCallState
+    data["secureCall"]["failureRouting"] = secureCallRouting
+    
+    #print(data["secureCall"]["activate"])
+    #print(str(data))
+    #get_response = requests.get(url, headers=headers)
+    #get_response_json = get_response.json()
+    
+    response = requests.put(url, json=data, headers=headers)
+    create_row(response,'csv_files/updated_status.csv')
+    
+    ##res = response.json()
+    ##print("Reponse is: \n " + str(response))
+    ##print("Your PUT response result was:\n " + str(res))
+    ##values = []
+    ##values.extend([res["phoneNumber"],response.status_code,res["secureCall"]["active"],res["secureCall"]["failureRouting"]])
+    ##update_csv(values,'csv_files/updated_status.csv')
+    
+def main():
+    print("Starting...")
+    create_csv() 
+    with open('csv_files/hiya_updates.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+
+        for row in csv_reader:
+            if line_count == 0:
+                # IGNORE THE FIRST ROW - WHICH SHOULD BE THE HEADER
+                line_count += 1
+            else:
+                #print(f'\t{row[0]} works in the {row[1]} department, and was born in {row[2]}.')
+                url = build_url(row[0],row[1]) 
+                proceed = query_hiya(url)
+                if proceed == 200:
+                    update_hiya(url,row[2],row[3])
+                line_count += 1
+    print("Finished...")
+                
+if __name__=="__main__":
+    main()
+
+# if we want to ask for prompts, next two lines
+#cc = input("What country code: ")
+#number = input("What number: ")
+#url = base_url + cc + '/' + number
