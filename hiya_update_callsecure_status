@@ -1,0 +1,163 @@
+import requests
+import base64
+import csv
+from csv import DictReader
+import os
+from datetime import datetime
+
+def build_creds():
+    with open('csv_files/credentials/credentials.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=':')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                line_count += 1
+                app_id = row[0]
+                app_secret = row[1]
+                encoded_appsecret = base64.b64encode((app_id + ':' + app_secret).encode()).decode()
+                return (encoded_appsecret)
+            else:
+                print("Why did this run?")
+                # this should not run bc the file should only have 1 row in it!
+
+def build_url(cc,number):
+    return base_url + cc + '/' + number
+
+def create_csv():
+    # CREATE THE OUTPUT CSV FILES FOR UPDATES AS WE GO AND SET THE HEADER
+    # THIS BLANKS OUT ANY EXISTING FILE AND WRITES ONE WITH A SINGLE HEADER LINE
+    with open(current_status_csv, 'w') as f:
+        header = ['number', 'displayName', 'country', 'managedBrand', 'callSecureState', 'callSecureRouting']
+        writer = csv.writer(f)
+        writer.writerow(header)
+    with open(updated_status_csv, 'w') as f:
+        header = ['number', 'displayName', 'country', 'managedBrand', 'callSecureState', 'callSecureRouting']
+        writer = csv.writer(f)
+        writer.writerow(header)
+    with open(error_log_csv, 'w') as f:
+        header = ['number', 'status_code']
+        writer = csv.writer(f)
+        writer.writerow(header)
+        
+def parse_response(response):
+    res = response.json()
+    values = []
+    displayName = ""
+    country = ""
+    managedBrand = ""
+    if res["display"]["active"] is None:
+        #print (res["display"]["pending"]["displayName"])
+        displayName = res["display"]["pending"]["displayName"]
+        country = res["display"]["pending"]["country"]
+        managedBrand = res["display"]["pending"]["managedBrand"]
+    else: 
+        #print(res["display"]["active"]["displayName"])
+        displayName = res["display"]["active"]["displayName"]
+        country = res["display"]["active"]["country"]
+        managedBrand = res["display"]["active"]["managedBrand"]
+        
+    values.extend([res["phoneNumber"],\
+                   displayName,\
+                   country,\
+                   managedBrand,\
+                   res["secureCall"]["active"],\
+                   res["secureCall"]["failureRouting"]\
+                  ])
+    return(values)
+
+def update_csv(data, file):
+    with open(file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(data)
+        
+def query_hiya(url):
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = parse_response(response)
+        #print(data)
+        update_csv(data,current_status_csv)
+        #create_row(response,'csv_files/current_status.csv')
+    else:
+        data = [url,response.status_code]
+        update_csv(data, error_log_csv)
+    return response.status_code
+
+def syslog_row(provider, data):
+    _str1 = "provider=\"" + provider + "\";"\
+              "number=\"" + data[0] + "\";"\
+              "displayName=\"" + data[1] + "\";"\
+              "country=\"" + data[2] + "\";"\
+              "managedBrand=\"" + data[3] + "\";"\
+              "callSecureState=\"" + str(data[4]) + "\";"\
+              "callSecureRouting=\"" + data[5] + "\""
+    cmd = 'echo "' + datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f") + ';' + _str1 + '" > /dev/udp/' + syslog_server + '/' + syslog_port
+    #print(cmd)
+    
+def update_hiya(url, cc, number, secureCallState, secureCallRouting):  
+    # BELOW ARE REQUIRED HIYA FIELDS FOR JSON PAYLOAD, 
+    # NOTE 'activate' is set to FALSE, but this will/should change from commands below
+
+    
+    data = {"display": {"displayName": "", "country": "", "managedBrand": ""}, "secureCall": {"activate": False, "failureRouting": ""}}
+    with open(current_status_csv) as csvfile:
+        reader = DictReader(csvfile)
+        for row in reader:
+            if (row['number'] == cc + '/' + number):
+                    data["display"]["displayName"] = row['displayName']
+                    data["display"]["country"] = row['country']
+                    data["display"]["managedBrand"] = row['managedBrand']
+    data["secureCall"]["activate"] = secureCallState
+    data["secureCall"]["failureRouting"] = secureCallRouting
+
+    response = requests.put(url, json=data, headers=headers)
+    
+    if response.status_code == 200:
+        data = parse_response(response)
+        update_csv(data,updated_status_csv)
+        syslog_row('Hiya',data)
+    else: 
+        data = [url,response.status_code]
+        update_csv(data, error_log_csv)
+        syslog_row('Hiya',data)
+
+def main():
+    print("Starting...")
+    global base_url
+    global encoded_appsecret
+    global headers
+    global current_status_csv
+    global updated_status_csv
+    global error_log_csv
+    global syslog_server
+    global syslog_port
+    
+    base_url = 'https://connect.api.hiyaapi.com/v1/phone/'
+    encoded_appsecret = build_creds()
+    headers = {"Authorization": "Basic %s" % encoded_appsecret}
+    current_status_csv = 'csv_files/current_status.csv'
+    updated_status_csv = 'csv_files/updated_status.csv'
+    error_log_csv = 'csv_files/errors.csv'
+    syslog_server = '172.19.19.19'
+    syslog_port = '1514'
+    
+    
+    create_csv() 
+    
+    with open('csv_files/hiya_updates.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+
+        for row in csv_reader:
+            if line_count == 0:
+                # IGNORE THE FIRST ROW - WHICH SHOULD BE THE HEADER
+                line_count += 1
+            else:
+                url = build_url(row[0],row[1]) 
+                proceed = query_hiya(url)
+                if proceed == 200:
+                    update_hiya(url,row[0],row[1],row[2],row[3])
+                #line_count += 1
+    print("Finished...")
+                
+if __name__=="__main__":
+    main()
