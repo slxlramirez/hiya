@@ -1,0 +1,90 @@
+import requests
+import base64
+import csv
+import os
+
+def build_creds():
+    with open('csv_files/credentials/credentials.csv') as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=':')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                line_count += 1
+                app_id = row[0]
+                app_secret = row[1]
+                encoded_appsecret = base64.b64encode((app_id + ':' + app_secret).encode()).decode()
+                return (encoded_appsecret)
+            else:
+                print("Why did this run?")
+                # this should not run bc the file should only have 1 row in it!
+                
+def create_csv():
+    # CREATE THE OUTPUT CSV FILES FOR UPDATES AS WE GO AND SET THE HEADER
+    # THIS BLANKS OUT ANY EXISTING FILE AND WRITES ONE WITH A SINGLE HEADER LINE
+    with open('csv_files/hiya_all_numbers.csv', 'w') as f:
+        header = ['number', 'callSecureState', 'callSecureRouting', 'displayName', 'country', 'managedBrand']
+        writer = csv.writer(f)
+        writer.writerow(header)
+        
+def update_csv(row, file):
+    with open(file, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(row)
+                
+def query_hiya(url):
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        #print(response.json())
+        #print(len(response.json()))
+        data = response.json()
+        #print(data)
+        #print("Data data is " + str(len(data["data"])))
+        #print(len(data['data']))
+        
+        phoneNumber = ''
+        callSecureState = ''
+        callSecureRouting = ''
+        displayName = ''
+        country = ''
+        managedBrand = ''
+        
+        #values = []
+        
+        for i in range(len(data['data'])):
+            phoneNumber = data['data'][i]['phoneNumber']
+            callSecureState = data['data'][i]['secureCall']['active']
+            callSecureRouting = data['data'][i]['secureCall']['failureRouting']
+            if data['data'][i]['display']['active'] is None:
+                displayName = data['data'][i]['display']['pending']['displayName']
+                country = data['data'][i]['display']['pending']['country']
+                managedBrand = data['data'][i]['display']['pending']['managedBrand']
+            else:
+                displayName = data['data'][i]['display']['active']['displayName']
+                country = data['data'][i]['display']['active']['country']
+                managedBrand = data['data'][i]['display']['active']['managedBrand']
+            tmp = [phoneNumber,callSecureState,callSecureRouting,displayName,country,managedBrand]
+            update_csv(tmp,'csv_files/hiya_all_numbers.csv')
+            #values.append(tmp)
+
+    else:
+        print("result was not 200")
+
+       
+def main():
+    print("Starting...")
+    global base_url
+    global encoded_appsecret
+    global headers
+    
+    base_url = 'https://connect.api.hiyaapi.com/v1/phone'
+    encoded_appsecret = build_creds()
+    headers = {"Authorization": "Basic %s" % encoded_appsecret}
+    
+    create_csv()
+    
+    query_hiya(base_url)
+    
+    print("Finished...")
+                
+if __name__=="__main__":
+    main()
