@@ -41,11 +41,11 @@ def create_csv():
     # CREATE THE OUTPUT CSV FILES FOR UPDATES AS WE GO AND SET THE HEADER
     # THIS BLANKS OUT ANY EXISTING FILE AND WRITES ONE WITH A SINGLE HEADER LINE
     with open(current_status_csv, 'w') as f:
-        header = ['number', 'displayName', 'logoId', 'callReason', 'state', 'city', 'country', 'managedBrand', 'callSecureState', 'callSecureRouting']
+        header = ['number', 'doNotOriginate', 'displayName', 'logoId', 'callReason', 'country', 'state', 'city', 'managedBrand', 'callSecureState', 'callSecureRouting']
         writer = csv.writer(f)
         writer.writerow(header)
     with open(updated_status_csv, 'w') as f:
-        header = ['number', 'displayName', 'logoId', 'callReason', 'state', 'city', 'country', 'managedBrand', 'callSecureState', 'callSecureRouting']
+        header = ['number', 'doNotOriginate', 'displayName', 'logoId', 'callReason', 'country', 'state', 'city', 'managedBrand', 'callSecureState', 'callSecureRouting']
         writer = csv.writer(f)
         writer.writerow(header)
     with open(error_log_csv, 'w') as f:
@@ -56,44 +56,53 @@ def create_csv():
 def parse_response(response):
     res = response.json()
     values = []
+    doNotOriginate = ''
     displayName = ''
     logoId = ''
     callReason = ''
+    country = ''
     state = ''
     city = ''
-    country = ''
     managedBrand = ''
     
-    if res["display"]["active"] is None:
-        #print (res["display"]["pending"]["displayName"])
-        displayName = res["display"]["pending"]["displayName"]
-        logoId = res["display"]["pending"]["logoId"]
-        callReason = res["display"]["pending"]["callReason"]
-        state = res["display"]["pending"]["state"]
-        city = res["display"]["pending"]["city"]
-        country = res["display"]["pending"]["country"]
-        managedBrand = res["display"]["pending"]["managedBrand"]
-    else: 
-        #print(res["display"]["active"]["displayName"])
+    if res['display']['active']:
+        #print('Entered ACTIVE: \n')
+        doNotOriginate = res["doNotOriginate"]
         displayName = res["display"]["active"]["displayName"]
         logoId = res["display"]["active"]["logoId"]
         callReason = res["display"]["active"]["callReason"]
+        country = res["display"]["active"]["country"]
         state = res["display"]["active"]["state"]
         city = res["display"]["active"]["city"]
-        country = res["display"]["active"]["country"]
         managedBrand = res["display"]["active"]["managedBrand"]
-        
+    else: 
+        print('Entered PENDING: \n')
+        doNotOriginate = res["doNotOriginate"]
+        displayName = res["display"]["pending"]["displayName"]
+        logoId = res["display"]["pending"]["logoId"]
+        callReason = res["display"]["pending"]["callReason"]
+        country = res["display"]["pending"]["country"]
+        state = res["display"]["pending"]["state"]
+        city = res["display"]["pending"]["city"]
+        managedBrand = res["display"]["pending"]["managedBrand"]
+    
+
     values.extend([res["phoneNumber"],\
+                   doNotOriginate,\
                    displayName,\
                    logoId,\
                    callReason,\
+                   country,\
                    state,\
                    city,\
-                   country,\
                    managedBrand,\
                    res["secureCall"]["active"],\
                    res["secureCall"]["failureRouting"]\
                   ])
+    
+    print("Values is currently:\n")
+    print(values)
+        
     return(values)
 
 def update_csv(data, file):
@@ -104,25 +113,28 @@ def update_csv(data, file):
 def query_hiya(url):
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
+        #print("Response is:\n")
+        #print(response.json())
         data = parse_response(response)
         #print(data)
         update_csv(data,current_status_csv)
         #create_row(response,'csv_files/current_status.csv')
     else:
+        print("Response code was not 200, Fam.\nCheck Error logs...")
         data = [url,response.status_code]
         update_csv(data, error_log_csv)
     return response.status_code
 
 def syslog_row(provider, data):
-    print(data)
+    #print(data)
     _str1 = "provider=\"" + provider + "\";"\
               "number=\"" + data[0] + "\";"\
               "displayName=\"" + str(data[1]) + "\";"\
               "logoId\"" + str(data[2]) + "\";"\
               "callReason\"" + str(data[3]) + "\";"\
-              "state\"" + str(data[4]) + "\";"\
-              "city\"" + str(data[5]) + "\";"\
-              "country=\"" + data[6] + "\";"\
+              "country\"" + str(data[4]) + "\";"\
+              "state\"" + str(data[5]) + "\";"\
+              "city=\"" + data[6] + "\";"\
               "managedBrand=\"" + data[7] + "\";"\
               "callSecureState=\"" + str(data[8]) + "\";"\
               "callSecureRouting=\"" + data[9] + "\""
@@ -133,40 +145,55 @@ def update_hiya(url, cc, number, secureCallState, secureCallRouting):
     # BELOW ARE REQUIRED HIYA FIELDS FOR JSON PAYLOAD, 
     # NOTE 'activate' is set to FALSE, but this will/should change from commands below
 
-    
-    data = {"display": {"displayName": "", "logoId": "", "callReason": "",  "state": "",  "city": "", "country": "", "managedBrand": ""}, "secureCall": {"activate": False, "failureRouting": ""}}
+    data = {"doNotOriginate": False, "display": {"displayName": "", "logoId": "", "callReason": "",  "country": "", "state": "",  "city": "", "managedBrand": ""}, "secureCall": {"activate": False, "failureRouting": ""}}
     with open(current_status_csv) as csvfile:
         reader = DictReader(csvfile)
         for row in reader:
             if (row['number'] == cc + '/' + number):
+                    if row["doNotOriginate"] is True:
+                        data["doNotOriginate"] = True
+                    elif row["doNotOriginate"] is False:
+                        data["doNotOriginate"] = False
+                    elif row["doNotOriginate"] == 'True':
+                        row["doNotOriginate"] = True
+                    elif row["doNotOriginate"] == 'False':
+                        row["doNotOriginate"] = False
+                    else:
+                        data["doNotOriginate"] = row['doNotOriginate']
                     data["display"]["displayName"] = row['displayName']
                     data["display"]["logoId"] = row['logoId']
                     if row['callReason'] == '':
-                        data["display"]["callReason"] = ' '
+                        print(1)
+                        data["display"]["callReason"] = None
                     else:
+                        print(2)
                         data["display"]["callReason"] = row['callReason']
-                    if row['state'] == '':
-                        data["display"]["state"] = ' '
-                    else:
-                        data["display"]["state"] = row['state']
-                    if row['city'] == '':
-                        data["display"]["city"] = ' '
-                    else:
-                        data["display"]["city"] = row['city']
                     data["display"]["country"] = row['country']
+                    data["display"]["state"] = row['state']
+                    data["display"]["city"] = row['city']
                     data["display"]["managedBrand"] = row['managedBrand']
-    data["secureCall"]["activate"] = secureCallState
+    if secureCallState is True:
+        data["secureCall"]["activate"] = True
+    elif secureCallState is False:
+        data["secureCall"]["activate"] = False
+    elif secureCallState == 'True':
+        data["secureCall"]["activate"] = True
+    elif secureCallState == 'False':
+        data["secureCall"]["activate"] = False
+    else:
+        data["secureCall"]["activate"] = secureCallState
     data["secureCall"]["failureRouting"] = secureCallRouting
     
-    print(f'The json payload is: {data}')
+    #print(f'The json payload is: {data}')
 
     response = requests.put(url, json=data, headers=headers)
-    print(response.json())
-    print(response.status_code)
+    #print("This is the JSON response: \n")
+    #print(response.json())
+    #print("Response code: " + str(response.status_code))
     if response.status_code == 200:
         data = parse_response(response)
         update_csv(data,updated_status_csv)
-        syslog_row('Hiya',data)
+        #syslog_row('Hiya',data)
     else: 
         data = [url,response.status_code]
         update_csv(data, error_log_csv)
@@ -209,8 +236,10 @@ def main():
                 # IGNORE THE FIRST ROW - WHICH SHOULD BE THE HEADER
                 line_count += 1
             else:
+                #print("Row being processed is: ")
+                #print(row)
                 url = build_url(row[0],row[1]) 
-                print(f"URL: {url} being used...")
+                #print(f"URL: {url} being used...")
                 proceed = query_hiya(url)
                 if proceed == 200:
                     update_hiya(url,row[0],row[1],row[2],row[3])
