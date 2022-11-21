@@ -142,9 +142,9 @@ def update_hiya(url, _data, cc, number, secureCallState, secureCallRouting):
         data["secureCall"]["activate"] = True
     elif secureCallState is False:
         data["secureCall"]["activate"] = False
-    elif secureCallState == 'True':
+    elif secureCallState.lower() == 'true':
         data["secureCall"]["activate"] = True
-    elif secureCallState == 'False':
+    elif secureCallState.lower() == 'false':
         data["secureCall"]["activate"] = False
     else:
         data["secureCall"]["activate"] = secureCallState
