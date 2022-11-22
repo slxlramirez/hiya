@@ -122,9 +122,9 @@ def update_hiya(url, _data, cc, number, secureCallState, secureCallRouting):
         data["doNotOriginate"] = True
     elif _data[1] is False:
         data["doNotOriginate"] = False
-    elif _data[1] == 'True':
+    elif _data[1].lower() == 'true':
         data["doNotOriginate"] = True
-    elif _data[1] == 'False':
+    elif _data[1].lower() == 'false':
         data["doNotOriginate"] = False
     else:
         data["doNotOriginate"] = _data[1]
@@ -151,7 +151,7 @@ def update_hiya(url, _data, cc, number, secureCallState, secureCallRouting):
     data["secureCall"]["failureRouting"] = secureCallRouting
     #print("Data is currently:\n")
     #print(data)
-    print('Attempting to put ' + url + 'with this json payload:')
+    print('Attempting to put ' + url + ' with this json payload:')
     print(data)
     response = requests.put(url, json=data, headers=headers)
     if response.status_code == 200:
@@ -221,6 +221,8 @@ def main():
                 url = build_url(row[0],row[1]) 
                 #print(f"URL: {url} being used...")
                 proceed = query_hiya(url,row[0],row[1],row[2],row[3])
+                print(f'Line Count: {line_count}')
+                line_count += 1
      #           if proceed == 200:
      #               update_hiya(url,row[0],row[1],row[2],row[3])
      #           #line_count += 1
