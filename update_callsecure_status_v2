@@ -149,10 +149,9 @@ def update_hiya(url, _data, cc, number, secureCallState, secureCallRouting):
     else:
         data["secureCall"]["activate"] = secureCallState
     data["secureCall"]["failureRouting"] = secureCallRouting
-    #print("Data is currently:\n")
+    print('Attempting to put ' + url)
+    #print('Attempting to put ' + url + ' with this json payload:')
     #print(data)
-    print('Attempting to put ' + url + ' with this json payload:')
-    print(data)
     response = requests.put(url, json=data, headers=headers)
     if response.status_code == 200:
         tmp = parse_response(response)
